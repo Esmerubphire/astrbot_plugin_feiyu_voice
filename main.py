@@ -49,9 +49,7 @@ class FeiyuVoice(Star):
         try:
             await self.client.wait(job_id)
             audio = await self.client.download(job_id, self.directory)
-            chain = MessageChain(
-                [Comp.Plain("肥鱼音频已生成。"), Comp.Record.fromFileSystem(str(audio))]
-            )
+            chain = MessageChain([Comp.Record.fromFileSystem(str(audio))])
             sent = await self.context.send_message(origin, chain)
             if not sent:
                 raise RuntimeError(
@@ -60,6 +58,14 @@ class FeiyuVoice(Star):
             self.jobs[job_id]["pending"] = False
             self.jobs[job_id]["delivered"] = True
             self.persist()
+            try:
+                receipt = await self.context.send_message(
+                    origin, MessageChain([Comp.Plain("肥鱼音频已发送。")])
+                )
+                if not receipt:
+                    logger.error("Feiyu voice delivery receipt could not be delivered")
+            except Exception:
+                logger.exception("Feiyu voice delivery receipt could not be delivered")
         except asyncio.CancelledError:
             raise
         except Exception as exc:
