@@ -11,7 +11,7 @@ from astrbot.core.star.filter.command import GreedyStr
 from .client import VoiceClient
 
 
-@register("feiyu_voice", "kaiyuey03", "肥鱼说话、换声与按谱唱歌统一接口", "0.1.0")
+@register("feiyu_voice", "kaiyuey03", "宇智波白饭鱼说话、换声与按谱唱歌统一接口", "0.1.0")
 class FeiyuVoice(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -50,7 +50,7 @@ class FeiyuVoice(Star):
             await self.client.wait(job_id)
             audio = await self.client.download(job_id, self.directory)
             chain = MessageChain(
-                [Comp.Plain("肥鱼音频已生成。"), Comp.Record.fromFileSystem(str(audio))]
+                [Comp.Plain("宇智波白饭鱼音频已生成。"), Comp.Record.fromFileSystem(str(audio))]
             )
             sent = await self.context.send_message(origin, chain)
             if not sent:
@@ -69,7 +69,7 @@ class FeiyuVoice(Star):
             try:
                 await self.context.send_message(
                     origin,
-                    MessageChain([Comp.Plain(f"肥鱼任务 {job_id} 未完成：{exc}")]),
+                    MessageChain([Comp.Plain(f"宇智波白饭鱼任务 {job_id} 未完成：{exc}")]),
                 )
             except Exception:
                 logger.exception("Feiyu failure notification could not be delivered")
@@ -83,7 +83,7 @@ class FeiyuVoice(Star):
         self.jobs[row["id"]] = dict(origin=origin, pending=True)
         self.persist()
         self.watch(row["id"], origin)
-        return f"已提交肥鱼任务 {row['id']}，生成后会在本会话发送音频。"
+        return f"已提交宇智波白饭鱼任务 {row['id']}，生成后会在本会话发送音频。"
 
     async def attached_asset(self, event, suffixes):
         components = list(event.get_messages())
@@ -103,19 +103,19 @@ class FeiyuVoice(Star):
                     return await self.client.upload(path, name)
         raise ValueError("请在本条消息中附上所需音频或 MIDI／ABC 文件。")
 
-    @filter.command("肥鱼状态", alias={"feiyu_status"})
+    @filter.command("宇智波白饭鱼状态", alias={"feiyu_status"})
     async def capabilities(self, event: AstrMessageEvent):
         try:
             data = (await self.client.request("GET", "/v1/capabilities")).json()
             tts = any(row["available"] for row in data["tts"])
             rvc = any(row["available"] for row in data["rvc"])
             yield event.plain_result(
-                f"肥鱼服务：说话 {'可用' if tts else '未安装'}；换声 {'可用' if rvc else '未安装'}；按谱唱歌 {'可用' if data['singing']['available'] else '未安装'}。"
+                f"宇智波白饭鱼服务：说话 {'可用' if tts else '未安装'}；换声 {'可用' if rvc else '未安装'}；按谱唱歌 {'可用' if data['singing']['available'] else '未安装'}。"
             )
         except Exception as exc:
             yield event.plain_result(str(exc))
 
-    @filter.command("肥鱼说话", alias={"feiyu_tts"})
+    @filter.command("宇智波白饭鱼说话", alias={"feiyu_tts"})
     async def speech(self, event: AstrMessageEvent, text: GreedyStr):
         try:
             yield event.plain_result(
@@ -128,7 +128,7 @@ class FeiyuVoice(Star):
         except Exception as exc:
             yield event.plain_result(str(exc))
 
-    @filter.command("肥鱼换声", alias={"feiyu_rvc"})
+    @filter.command("宇智波白饭鱼换声", alias={"feiyu_rvc"})
     async def conversion(self, event: AstrMessageEvent):
         try:
             audio_id = await self.attached_asset(event, {".wav", ".flac"})
@@ -138,7 +138,7 @@ class FeiyuVoice(Star):
         except Exception as exc:
             yield event.plain_result(str(exc))
 
-    @filter.command("肥鱼唱歌", alias={"feiyu_sing"})
+    @filter.command("宇智波白饭鱼唱歌", alias={"feiyu_sing"})
     async def singing(self, event: AstrMessageEvent, lyrics: GreedyStr):
         try:
             score_id = await self.attached_asset(event, {".mid", ".midi", ".abc"})
@@ -152,7 +152,7 @@ class FeiyuVoice(Star):
         except Exception as exc:
             yield event.plain_result(str(exc))
 
-    @filter.command("肥鱼任务", alias={"feiyu_job"})
+    @filter.command("宇智波白饭鱼任务", alias={"feiyu_job"})
     async def job(self, event: AstrMessageEvent, job_id: str):
         try:
             if self.jobs.get(job_id, {}).get("origin") != event.unified_msg_origin:
@@ -162,7 +162,7 @@ class FeiyuVoice(Star):
                 audio = await self.client.download(job_id, self.directory)
                 yield event.chain_result([Comp.Record.fromFileSystem(str(audio))])
             else:
-                yield event.plain_result("肥鱼任务状态：" + result["status"])
+                yield event.plain_result("宇智波白饭鱼任务状态：" + result["status"])
         except Exception as exc:
             yield event.plain_result(str(exc))
 
@@ -170,7 +170,7 @@ class FeiyuVoice(Star):
     async def speak_tool(
         self, event: AstrMessageEvent, text: str, style: str = "cute"
     ) -> str:
-        """用肥鱼声音朗读或说话。需要演唱谱子时使用 feiyu_sing；已有音频换声使用 feiyu_convert。
+        """用宇智波白饭鱼声音朗读或说话。需要演唱谱子时使用 feiyu_sing；已有音频换声使用 feiyu_convert。
 
         Args:
             text(string): 要说的文字，最多2000字。
@@ -185,7 +185,7 @@ class FeiyuVoice(Star):
     async def convert_tool(
         self, event: AstrMessageEvent, source: str = "attachment"
     ) -> str:
-        """把当前消息所附的清唱或语音转换成肥鱼音色。需要已有音频；不能直接把谱子交给RVC。
+        """把当前消息所附的清唱或语音转换成宇智波白饭鱼音色。需要已有音频；不能直接把谱子交给RVC。
 
         Args:
             source(string): 固定为attachment，表示使用本消息附件，不能填写文件路径或URL。

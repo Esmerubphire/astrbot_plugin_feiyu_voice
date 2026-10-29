@@ -1,6 +1,6 @@
 name: astrbot_plugin_feiyu_voice
-display_name: 肥鱼声音
-desc: 通过统一声音服务调用肥鱼TTS、RVC和MIDI/ABC按谱唱歌。
+display_name: 宇智波白饭鱼
+desc: 通过统一声音服务调用宇智波白饭鱼TTS、RVC和MIDI/ABC按谱唱歌。
 version: v0.1.0
 author: kaiyuey03
 astrbot_version: ">=4.29.3,<5"
