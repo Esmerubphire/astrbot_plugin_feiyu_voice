@@ -68,7 +68,9 @@ DeepSeek／DSH 中的模型负责理解“说话、按谱唱歌、翻唱歌曲�
 
 先部署独立声音服务，再从本仓安装插件；已有的 [v0.1.0 插件安装包](https://github.com/Esmerubphire/astrbot_plugin_feiyu_voice/releases/tag/v0.1.0) 也可使用。插件支持 AstrBot `>=4.29.3,<5`，服务当前为 `v0.2.0`，两者分别管理版本。
 
-配置项：`base_url=http://127.0.0.1:9880`、`api_key`、`voice=feiyu`、`style=cute` 或 `gentle`。
+配置项：`base_url=http://127.0.0.1:9880`、`api_key`、`voice=feiyu`、`style=cute` 或 `gentle`、`caption_enable=true`。
+
+`caption_enable` 打开时，模型可以在语音条后面紧跟一句短话（即 `feiyu_speak` 的 `caption` 参数，建议 20 字以内、口语化）：语音条单独发出，这条文字等音频发送成功后再补，顺序不受宿主消息链影响。模型不填 `caption` 时与旧版完全一致；关掉该开关则只发语音条。
 
 | 命令 | 用法 |
 |---|---|
@@ -78,7 +80,7 @@ DeepSeek／DSH 中的模型负责理解“说话、按谱唱歌、翻唱歌曲�
 | `/肥鱼唱歌 歌词`＋MIDI／ABC 附件 | 按谱生成人声；先配置好可选 SVS 组件 |
 | `/肥鱼任务 任务编号` | 查询或重新领取当前会话的音频 |
 
-大模型工具为 `feiyu_speak(text, style)`、`feiyu_convert(source="attachment")`、`feiyu_sing(lyrics)`。自然语言调用需要宿主配置可用的工具调用模型；命令调用可以独立使用。整首歌曲的分离和混音由具备本地工具权限的 agent 组织，插件当前的换声命令接收的是干净人声。
+大模型工具为 `feiyu_speak(text, style, caption)`、`feiyu_convert(source="attachment")`、`feiyu_sing(lyrics)`。自然语言调用需要宿主配置可用的工具调用模型；命令调用可以独立使用。整首歌曲的分离和混音由具备本地工具权限的 agent 组织，插件当前的换声命令接收的是干净人声。
 
 ## 具体用了哪些技术
 

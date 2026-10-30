@@ -2,5 +2,6 @@
   "base_url": {"description": "声音服务地址", "type": "string", "default": "http://127.0.0.1:9880"},
   "api_key": {"description": "声音服务API Key（私密）", "type": "string", "default": "", "obvious_hint": true},
   "voice": {"description": "配置的声音ID", "type": "string", "default": "feiyu"},
-  "style": {"description": "说话默认风格", "type": "string", "default": "cute", "options": ["cute", "gentle"]}
+  "style": {"description": "说话默认风格", "type": "string", "default": "cute", "options": ["cute", "gentle"]},
+  "caption_enable": {"description": "语音条后面补一句短话（关闭后只发语音，不跟文字）", "type": "bool", "default": true}
 }
