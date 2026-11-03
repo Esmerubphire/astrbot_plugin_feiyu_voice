@@ -11,6 +11,32 @@ from astrbot.core.star.filter.command import GreedyStr
 from .client import VoiceClient
 
 
+# 同一轮对话、同一类型、同一参数只提交一单。
+# 大模型可能在一轮里重复调用同一个工具，重复提交会合成并发送多份音频。
+#
+# 去重状态挂在这一轮的事件对象上，不放在插件实例里。AstrBot 的
+# tool_loop_agent_runner 在 reset() 时绑定一次 run_context，之后每个工具调用
+# 都从 run_context.context.event 取事件，所以同一轮的多次调用拿到的是同一个
+# 对象，不同轮次必然不同。轮次结束、事件被回收，记录跟着消失，不需要清理。
+#
+# 放在插件级字典里按 20 秒窗口清理是不行的：A 轮语音已经投递、但 agent 还在
+# 跑，B 轮这时提交会触发全局清理，把 A 的记录当成陈旧数据删掉，A 再调一次就
+# 重新下单。投递状态只能说明音频结束，说明不了轮次结束 —— 只有事件知道。
+
+
+def _dedupe_cache(event):
+    """这一轮的去重表。挂在事件对象上，跟着轮次一起生灭。"""
+    cache = getattr(event, "_feiyu_seen", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        try:
+            event._feiyu_seen = cache
+        except Exception:
+            # 挂不上属性就只能退化成不去重：宁可漏拦，也不能误删别的轮次的记录
+            pass
+    return cache
+
+
 @register("feiyu_voice", "kaiyuey03", "肥鱼说话、换声与按谱唱歌统一接口", "0.1.0")
 class FeiyuVoice(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -49,14 +75,27 @@ class FeiyuVoice(Star):
         try:
             await self.client.wait(job_id)
             audio = await self.client.download(job_id, self.directory)
-            chain = MessageChain(
-                [Comp.Plain("肥鱼音频已生成。"), Comp.Record.fromFileSystem(str(audio))]
-            )
+            record = Comp.Record.fromFileSystem(str(audio))
+            caption = (self.jobs.get(job_id) or {}).get("caption")
+            if caption and self.config.get("caption_enable", True):
+                # 语音条单独发；文字等音频发送成功后再补，顺序因此是结构性的。
+                chain = MessageChain([record])
+            else:
+                caption = None
+                chain = MessageChain([Comp.Plain("肥鱼音频已生成。"), record])
             sent = await self.context.send_message(origin, chain)
             if not sent:
                 raise RuntimeError(
                     "The platform could not deliver the audio; retrieve it using the job command"
                 )
+            if caption:
+                try:
+                    await self.context.send_message(
+                        origin, MessageChain([Comp.Plain(caption)])
+                    )
+                except Exception:
+                    # 回执失败不影响音频已交付的事实，不要把任务标记成失败。
+                    logger.exception("Feiyu caption could not be delivered")
             self.jobs[job_id]["pending"] = False
             self.jobs[job_id]["delivered"] = True
             self.persist()
@@ -74,13 +113,51 @@ class FeiyuVoice(Star):
             except Exception:
                 logger.exception("Feiyu failure notification could not be delivered")
 
-    async def enqueue(self, event, kind, payload):
+    def _live_job(self, job_id):
+        """这一单是否还值得拿来挡重复调用：还在路上，或者已经成功投递。
+
+        失败的任务既不在路上也没投递成功，重试应当放行，不能回一句「音频会照常发出」。
+        """
+        row = self.jobs.get(job_id)
+        if not row:
+            return False
+        return bool(row.get("pending") or row.get("delivered"))
+
+    async def enqueue(self, event, kind, payload, caption=None):
         if not self.config.get("api_key"):
             raise ValueError("请先在插件配置中填写声音服务 API Key。")
         payload["voice"] = self.config.get("voice", "feiyu")
-        row = await self.client.submit(kind, payload)
         origin = event.unified_msg_origin
-        self.jobs[row["id"]] = dict(origin=origin, pending=True)
+        seen = _dedupe_cache(event)
+        signature = json.dumps([origin, kind, payload], sort_keys=True, ensure_ascii=False)
+        previous = seen.get(signature)
+        if previous:
+            job_id = previous["job"]
+            if job_id is None:
+                # 第一单还在提交，第二次调用撞在占位上；此时还不知道成败，不做任何承诺
+                return "同一段语音正在提交，不需要重复调用。"
+            if self._live_job(job_id):
+                row = self.jobs.get(job_id) or {}
+                if row.get("delivered"):
+                    return f"这条语音已经发过了（任务 {job_id}），不需要重复提交。"
+                return (
+                    f"同一段语音已经提交过（任务 {job_id}），正在生成，"
+                    "不需要重复调用。"
+                )
+            # 上一单失败或没投递出去：不构成重复，清掉记录重新提交
+            seen.pop(signature, None)
+        # 先占位再 await：检查与占位之间没有 await，并发的第二次调用只能看到占位。
+        reserved = {"job": None}
+        seen[signature] = reserved
+        try:
+            row = await self.client.submit(kind, payload)
+        except BaseException:
+            # 只回收自己这个占位
+            if seen.get(signature) is reserved:
+                seen.pop(signature, None)
+            raise
+        seen[signature] = {"job": row["id"]}
+        self.jobs[row["id"]] = dict(origin=origin, pending=True, caption=caption)
         self.persist()
         self.watch(row["id"], origin)
         return f"已提交肥鱼任务 {row['id']}，生成后会在本会话发送音频。"
@@ -168,16 +245,26 @@ class FeiyuVoice(Star):
 
     @filter.llm_tool(name="feiyu_speak")
     async def speak_tool(
-        self, event: AstrMessageEvent, text: str, style: str = "cute"
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        style: str = "cute",
+        caption: str = "",
     ) -> str:
-        """用肥鱼声音朗读或说话。需要演唱谱子时使用 feiyu_sing；已有音频换声使用 feiyu_convert。
+        """用肥鱼声音朗读或说话。需要演唱谱子时使用 feiyu_sing；已有音频换声使用 feiyu_convert。一次调用就完成，不要重复调用。
 
         Args:
-            text(string): 要说的文字，最多2000字。
+            text(string): 要念出来的原文，最多2000字。
             style(string): cute 或 gentle。
+            caption(string): 语音条后面紧跟的一句话，20字以内、口语化；不想补话就留空。
         """
         try:
-            return await self.enqueue(event, "speech", dict(text=text, style=style))
+            return await self.enqueue(
+                event,
+                "speech",
+                dict(text=text, style=style),
+                caption=(caption or "").strip()[:60] or None,
+            )
         except Exception as exc:
             return str(exc)
 
